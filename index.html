@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>포스터 그리드</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="main">
+  <section class="stage">
+    <canvas id="preview"></canvas>
+    <div class="readout" id="readout"></div>
+  </section>
+
+  <aside class="inspector">
+    <div class="inspector-main" id="panel"></div>
+    <div class="inspector-footer">
+      <label class="control text-field"><input id="fileName" type="text" spellcheck="false"><span class="field-unit">.idml</span></label>
+      <button class="button" data-variant="primary" id="export">IDML 저장</button>
+    </div>
+  </aside>
+</main>
+<script src="template.js"></script>
+<script src="idml.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
