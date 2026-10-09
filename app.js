@@ -41,6 +41,16 @@
     baseline: { on: true, division: 14, unit: 'pt', start: 0, relative: 'margin' },
     pages: 1, panels: 8, bothSides: true, perforation: 8,
   };
+  // 위싱웰 리플렛: 110×180 4칸, 칸 3|4 사이 절취선
+  const ACC_4 = {
+    ...ACC_BASE,
+    width: 110, height: 180,
+    margin: { top: 10, bottom: 12, left: 8, right: 8 },
+    rows: 4,
+    baseline: { on: true, division: 12, unit: 'pt', start: 0, relative: 'margin' },
+    panels: 4, perforation: 4,
+    fileName: 'wishingwell_leaflet_110x180_4panel',
+  };
   const BASES = { poster: BASE, book: BOOK_BASE, accordion: ACC_BASE };
 
   const BUILTIN = [
@@ -49,6 +59,7 @@
     { name: '신국판 6단', builtin: true, s: BOOK_BASE },
     { name: '국판 2단', builtin: true, s: { ...BOOK_BASE, size: '국판', width: 148, height: 210, margin: { top: 17, bottom: 22, left: 18, right: 14 }, cols: 2, colGutter: 6, rowGutter: 6, baseline: { on: true, division: 13, unit: 'pt', start: 0, relative: 'margin' } } },
     { name: '위싱웰 병풍', builtin: true, s: ACC_BASE },
+    { name: '아코디언 4칸', builtin: true, s: ACC_4 },
   ];
   const presetMode = (p) => p.s.mode || 'poster';
 

@@ -70,6 +70,51 @@
       '</PathPointArray></GeometryPathType></PathGeometry></Properties></GraphicLine>';
   }
 
+  // ── 내용(선택): 단락 스타일, 레이어, 텍스트 프레임, 박스, 원 ──
+  // g.content = { paragraphStyles: [{ name, size, leading, font, fontStyle, alignToBaseline }],
+  //               layers: [{ name, printable, color }],
+  //               items: [{ type: 'text'|'rect'|'oval', page, x, y, w, h (mm, 페이지 기준), layer, paragraphs: [{ style, text, justify, color }] }] }
+  // layers 는 위에서 아래 순서. layer 를 안 주면 '레이어 1'.
+  function paragraphStyleXml(p) {
+    return '<ParagraphStyle Self="ParagraphStyle/' + esc(p.name) + '" Name="' + esc(p.name) + '" Imported="false" NextStyle="ParagraphStyle/' + esc(p.name) +
+      '" KeyboardShortcut="0 0" PointSize="' + n(p.size) + '" FontStyle="' + esc(p.fontStyle || 'Regular') +
+      '" GridAlignment="' + (p.alignToBaseline ? 'AlignBaseline' : 'None') + '"><Properties>' +
+      '<BasedOn type="string">$ID/[No paragraph style]</BasedOn><PreviewColor type="enumeration">Nothing</PreviewColor>' +
+      '<Leading type="unit">' + n(p.leading) + '</Leading><AppliedFont type="string">' + esc(p.font) + '</AppliedFont>' +
+      '</Properties></ParagraphStyle>';
+  }
+
+  function storyXml(id, paragraphs) {
+    const body = paragraphs.map((p, i) =>
+      '<ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/' + esc(p.style) + '"' + (p.justify ? ' Justification="' + p.justify + '"' : '') + '>' +
+      '<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]"' + (p.color ? ' FillColor="' + esc(p.color) + '"' : '') + '>' +
+      (p.text ? '<Content>' + esc(p.text) + '</Content>' : '') + (i < paragraphs.length - 1 ? '<Br />' : '') +
+      '</CharacterStyleRange></ParagraphStyleRange>').join('');
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<idPkg:Story xmlns:idPkg="http://ns.adobe.com/AdobeInDesign/idml/1.0/packaging" DOMVersion="21.0">\n' +
+      '<Story Self="' + id + '" UserText="true" IsEndnoteStory="false" AppliedTOCStyle="n" TrackChanges="false" StoryTitle="$ID/" AppliedNamedGrid="n">' +
+      '<StoryPreference OpticalMarginAlignment="false" OpticalMarginSize="12" FrameType="TextFrameType" StoryOrientation="Horizontal" StoryDirection="LeftToRightDirection" />' +
+      body + '</Story>\n</idPkg:Story>\n';
+  }
+
+  // 스프레드 좌표의 점 목록 → PathGeometry. 점마다 [x, y] 또는 [x, y, lx, ly, rx, ry]
+  function pathXml(points, open) {
+    return '<Properties><PathGeometry><GeometryPathType PathOpen="' + (open ? 'true' : 'false') + '"><PathPointArray>' +
+      points.map(([x, y, lx = x, ly = y, rx = x, ry = y]) =>
+        '<PathPointType Anchor="' + n(x) + ' ' + n(y) + '" LeftDirection="' + n(lx) + ' ' + n(ly) + '" RightDirection="' + n(rx) + ' ' + n(ry) + '" />').join('') +
+      '</PathPointArray></GeometryPathType></PathGeometry></Properties>';
+  }
+  const rectPoints = (x1, y1, x2, y2) => [[x1, y1], [x1, y2], [x2, y2], [x2, y1]];
+  function ovalPoints(x1, y1, x2, y2) {
+    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, rx = (x2 - x1) / 2, ry = (y2 - y1) / 2, k = 0.5522847498;
+    return [
+      [x1, cy, x1, cy + k * ry, x1, cy - k * ry],
+      [cx, y1, cx - k * rx, y1, cx + k * rx, y1],
+      [x2, cy, x2, cy - k * ry, x2, cy + k * ry],
+      [cx, y2, cx + k * rx, y2, cx - k * rx, y2],
+    ];
+  }
+
   function guideXml(id, y, pageIndex) {
     return '<Guide Self="' + id + '" OverriddenPageItemProps="" Orientation="Horizontal" Location="' + n(y) +
       '" FitToPage="true" ViewThreshold="5" Locked="false" ItemLayer="' + LAYER_ID +
@@ -119,6 +164,31 @@
       for (let p = 1; p <= pages; p++) layout.push([p]);
     }
 
+    const content = g.content || { paragraphStyles: [], layers: [], items: [] };
+    const layerIds = { '레이어 1': LAYER_ID };
+    (content.layers || []).forEach((l, i) => { layerIds[l.name] = 'u64c' + i.toString(16); });
+    const stories = {};
+    let itemId = 0x200;
+    // 페이지 위 항목 → 스프레드 XML. ox, oy = 페이지 왼쪽 위의 스프레드 좌표
+    function itemXml(it, ox, oy) {
+      const id = 'ui' + (itemId++).toString(16);
+      const x1 = ox + mm(it.x), y1 = oy + mm(it.y), x2 = x1 + mm(it.w), y2 = y1 + mm(it.h);
+      const layer = layerIds[it.layer || '레이어 1'];
+      if (!layer) throw new Error('레이어 없음: ' + it.layer);
+      if (it.type === 'text') {
+        const sid = 'us' + (itemId++).toString(16);
+        stories['Stories/Story_' + sid + '.xml'] = storyXml(sid, it.paragraphs);
+        return '<TextFrame Self="' + id + '" ParentStory="' + sid + '" PreviousTextFrame="n" NextTextFrame="n" ContentType="TextType" OverriddenPageItemProps="" Visible="true" Name="$ID/" ItemLayer="' + layer +
+          '" Locked="false" AppliedObjectStyle="ObjectStyle/$ID/[Normal Text Frame]" ItemTransform="1 0 0 1 0 0">' + pathXml(rectPoints(x1, y1, x2, y2)) +
+          '<TextFramePreference TextColumnCount="1" TextColumnGutter="12" AutoSizingType="Off" FirstBaselineOffset="AscentOffset" VerticalJustification="TopAlign" UseMinimumHeightForAutoSizing="false" IgnoreWrap="false" /></TextFrame>';
+      }
+      const tag = it.type === 'oval' ? 'Oval' : 'Rectangle';
+      const pts = it.type === 'oval' ? ovalPoints(x1, y1, x2, y2) : rectPoints(x1, y1, x2, y2);
+      return '<' + tag + ' Self="' + id + '" ContentType="Unassigned" OverriddenPageItemProps="" Visible="true" Name="' + esc(it.name || '$ID/') + '" StrokeWeight="' + n(it.stroke ?? 0.5) +
+        '" StrokeColor="Color/Black" FillColor="Swatch/None" StrokeType="StrokeStyle/$ID/Solid" ItemLayer="' + layer +
+        '" Locked="false" AppliedObjectStyle="ObjectStyle/$ID/[None]" ItemTransform="1 0 0 1 0 0">' + pathXml(pts) + '</' + tag + '>';
+    }
+
     const spreads = {};
     const spreadRefs = [];
     let firstPage = '';
@@ -136,6 +206,10 @@
         return pageXml(pid, String(num), 'uf2', 'uf1', tx);
       }).join('');
       let extras = '';
+      nums.forEach((num, k) => {
+        const tx = acc ? -nums.length * W / 2 + k * W : facing ? (num % 2 === 0 ? -W : 0) : singleTx;
+        (content.items || []).filter((it) => it.page === num).forEach((it) => { extras += itemXml(it, tx, -H / 2); });
+      });
       if (acc) {
         for (let k = 1; k < nums.length; k++) extras += spreadGuideXml('ud' + (0x100 + i * 64 + k).toString(16), k * W, LAYER_ID, 'Green');
         if (i === 0 && perf > 1 && perf <= nums.length) {
@@ -150,8 +224,15 @@
         pagesXml + extras + '</Spread>\n</idPkg:Spread>\n';
     });
 
-    const layer = '\t<Layer Self="' + LAYER_ID + '" Name="레이어 1" Visible="true" Locked="false" IgnoreWrap="false" ShowGuides="true" LockGuides="false" UI="true" Expendable="true" Printable="true"><Properties><LayerColor type="enumeration">LightBlue</LayerColor></Properties></Layer>' +
-      (perf > 1 ? '\n\t<Layer Self="' + PERF_LAYER_ID + '" Name="perforation" Visible="true" Locked="false" IgnoreWrap="false" ShowGuides="true" LockGuides="false" UI="true" Expendable="true" Printable="false"><Properties><LayerColor type="enumeration">Red</LayerColor></Properties></Layer>' : '');
+    const layerXml = (id, name, printable, color) => '\t<Layer Self="' + id + '" Name="' + esc(name) + '" Visible="true" Locked="false" IgnoreWrap="false" ShowGuides="true" LockGuides="false" UI="true" Expendable="true" Printable="' + (printable ? 'true' : 'false') + '"><Properties><LayerColor type="enumeration">' + color + '</LayerColor></Properties></Layer>';
+    // designmap 의 레이어는 아래부터 적는다. 내용 레이어: below 면 '레이어 1' 아래, 아니면 위
+    const extraLayers = (below) => (content.layers || []).filter((l) => !!l.below === below).map((l) => layerXml(layerIds[l.name], l.name, l.printable !== false, l.color || 'Gray'));
+    const layer = [
+      ...extraLayers(true).reverse(),
+      layerXml(LAYER_ID, '레이어 1', true, 'LightBlue'),
+      ...(perf > 1 ? [layerXml(PERF_LAYER_ID, 'perforation', false, 'Red')] : []),
+      ...extraLayers(false).reverse(),
+    ].join('\n');
 
     const designmap = T['designmap.xml']
       .replace('{{NAME}}', esc(g.fileName.replace(/\.idml$/i, '') + '.indd'))
@@ -159,11 +240,19 @@
       .replace('{{MASTERS}}', '<idPkg:MasterSpread src="MasterSpreads/MasterSpread_uf2.xml" />')
       .replace('{{SPREADS}}', spreadRefs.join('\n\t'))
       .replace('{{PAGESTART}}', firstPage)
-      .split('{{PAGECOUNT}}').join(String(pages));
+      .split('{{PAGECOUNT}}').join(String(pages))
+      .replace('<idPkg:BackingStory src="XML/BackingStory.xml" />', (m) => [m, ...Object.keys(stories).map((p) => '<idPkg:Story src="' + p + '" />')].join('\n\t'))
+      .replace('StoryList="ucd"', 'StoryList="' + ['ucd', ...Object.keys(stories).map((p) => p.match(/Story_(\w+)\.xml/)[1])].join(' ') + '"');
+
+    let styles = T['Resources/Styles.xml'];
+    if ((content.paragraphStyles || []).length) {
+      styles = styles.replace('</RootParagraphStyleGroup>', content.paragraphStyles.map(paragraphStyleXml).join('\n\t\t') + '\n\t</RootParagraphStyleGroup>');
+    }
 
     let prefs = T['Resources/Preferences.xml'];
     prefs = setAttrs(prefs, 'DocumentPreference', {
-      PageWidth: n(W), PageHeight: n(H), PagesPerDocument: pages, FacingPages: facing ? 'true' : 'false',
+      // 쪽은 스프레드가 만든다. 여기에 쪽 수를 넣으면 인디자인이 빈 쪽을 따로 만들고 스프레드를 그 뒤에 붙인다(2026 확인)
+      PageWidth: n(W), PageHeight: n(H), PagesPerDocument: 1, FacingPages: facing ? 'true' : 'false',
       DocumentBleedTopOffset: n(B), DocumentBleedBottomOffset: n(B),
       DocumentBleedInsideOrLeftOffset: n(B), DocumentBleedOutsideOrRightOffset: n(B), DocumentBleedUniformSize: 'true',
       AllowPageShuffle: acc ? 'false' : 'true',
@@ -187,10 +276,11 @@
       ['designmap.xml', designmap],
       ['Resources/Graphic.xml', T['Resources/Graphic.xml']],
       ['Resources/Fonts.xml', T['Resources/Fonts.xml']],
-      ['Resources/Styles.xml', T['Resources/Styles.xml']],
+      ['Resources/Styles.xml', styles],
       ['Resources/Preferences.xml', prefs],
       ['MasterSpreads/MasterSpread_uf2.xml', master],
       ...Object.entries(spreads),
+      ...Object.entries(stories),
       ['XML/BackingStory.xml', T['XML/BackingStory.xml']],
       ['XML/Tags.xml', T['XML/Tags.xml']],
     ];
