@@ -45,11 +45,11 @@
   const ACC_4 = {
     ...ACC_BASE,
     width: 110, height: 180,
-    margin: { top: 10, bottom: 12, left: 8, right: 8 },
+    margin: { top: 7, bottom: 7.5, left: 8, right: 8 },
     rows: 4,
     baseline: { on: true, division: 12, unit: 'pt', start: 0, relative: 'margin' },
     panels: 4, perforation: 4,
-    fileName: 'wishingwell_leaflet_110x180_4panel',
+    fileName: '위싱웰브로셔',
   };
   const BASES = { poster: BASE, book: BOOK_BASE, accordion: ACC_BASE };
 

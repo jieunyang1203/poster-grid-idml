@@ -14,12 +14,12 @@ const SHEET = 'https://docs.google.com/spreadsheets/d/1BvsjvekSh2Xb9tr_GqwmC-JRP
 const GRID = {
   mode: 'accordion', facing: false,
   width: 110, height: 180, bleed: 3,
-  margin: { top: 10, bottom: 12, left: 8, right: 8 },
+  margin: { top: 7, bottom: 7.5, left: 8, right: 8 },
   cols: 2, colGutter: 4,
   rows: 4, rowGutter: 4,
   baseline: { on: true, division: 12, unit: 'pt', start: 0, relative: 'margin' },
   panels: 4, bothSides: true, perforation: 4,
-  fileName: 'wishingwell_leaflet_110x180_4panel',
+  fileName: '위싱웰브로셔',
 };
 
 const FONT = 'Apple SD Gothic Neo';
@@ -73,11 +73,16 @@ function layout(rows) {
   const bodyParas = (p) => (p.body === NO_TEXT ? [] : lines(p.body).map((text) => ({ style: 'Body', text })));
   const text = (page, x, y, w, h, paragraphs) => { if (paragraphs.length) items.push({ type: 'text', page, x, y, w, h, paragraphs }); };
   const box = (page, x, y, w, h, name) => items.push({ type: 'rect', page, x, y, w, h, layer: 'boxes', name });
+  // 인쇄했을 때 뒷면 짝: 바깥 면을 좌우로 뒤집어 찍으므로 1↔8, 2↔7, 3↔6, 4↔5
+  const N = GRID.panels;
+  const PAGE_NAMES = ['소개·정보', '돌 탁본', '쓰는 칸', '소원 카드', '카드 뒷면(돌탑)', '산길 지도 왼쪽', '산길 지도 오른쪽', '표지'];
+  const pageName = (pg) => (pg <= N ? '안쪽 ' + pg : '바깥 ' + (pg - N)) + ' ' + PAGE_NAMES[pg - 1];
+  const backOf = (pg) => 2 * N + 1 - pg;
+  // 페이지 아래 대지에 메모(인쇄 안 함): 첫 줄 = 뒷면 짝, 다음 = 할 것
   const note = (page, s) => {
-    if (!s) return;
-    // 아래 여백 띠에 작은 메모
-    items.push({ type: 'text', page, x: X, y: BOTTOM + 1.5, w: CW, h: H - BOTTOM - 3, layer: 'notes',
-      paragraphs: lines(s).map((t) => ({ style: 'Label', text: t, color: 'Color/Magenta' })) });
+    const match = pageName(page) + '  ↔  뒷면: ' + pageName(backOf(page)) + (page === N ? ' · 왼쪽 선 절취' : page === N + 1 ? ' · 오른쪽 선 절취' : '');
+    items.push({ type: 'text', page, x: 0, y: H + GRID.bleed + 3, w: W, h: 16, layer: 'notes',
+      paragraphs: [match, ...(s ? lines(s) : [])].map((t, i) => ({ style: 'Label', text: (i ? '할 것 · ' : '') + t, color: 'Color/Magenta' })) });
   };
 
   // ── 스프레드 1: 펼쳐 보는 면 (1–4쪽) ──
@@ -118,8 +123,9 @@ function layout(rows) {
   note(5, [back.body, back.todo].filter(Boolean).join('\n'));
 
   const map = find('바깥 면', '산길 지도');
-  text(6, X, Y, CW, 36.5, [...titleParas(map), ...bodyParas(map)]);   // 첫 행
+  text(6, X, Y, CW, (CH - 3 * GRID.rowGutter) / GRID.rows, [...titleParas(map), ...bodyParas(map)]);   // 첫 행
   note(6, map.todo);
+  note(7, map.todo);
   // 스탬프 칸 4곳: 왼쪽 아래 출발 → 오른쪽 위 정상. 이름은 본문 첫 줄에서
   const stops = lines(map.body)[0].split('·').map((s) => s.trim());
   const D = 18;
